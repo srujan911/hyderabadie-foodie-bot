@@ -2,6 +2,7 @@ import logging
 import os
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.constants import ChatAction
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -32,14 +33,15 @@ logging.basicConfig(
     AWAITING_VEG,
     AWAITING_PRICE,
     AWAITING_RATING,
-) = range(5)
+    AWAITING_CONFIRMATION,
+) = range(6)
 
 
 # --- Command Handlers ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message when the /start command is issued."""
     welcome_text = (
-        "Salaam! I'm the Hyderabadi Foodie Bot. \n\n"
+        "Salaam! 🙏 I'm the Hyderabadi Foodie Bot. \n\n"
         "I can help you find the best restaurants in Hyderabad. \n\n"
         "To start a search, just type /find."
     )
@@ -51,10 +53,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends instructions when the /help command is issued."""
     help_text = (
-        "Here's how to use me:\n\n"
-        "/start - Shows the welcome message.\n"
-        "/find - Starts a new restaurant search.\n"
-        "/help - Shows this help message.\n"
+        "Here's how to use me: \n\n"
+        "/start - Shows the welcome message. \n"
+        "/find - Starts a new restaurant search. \n"
+        "/help - Shows this help message. \n"
         "/cancel - Cancels the current search."
     )
     await context.bot.send_message(
@@ -66,7 +68,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancels and ends the conversation."""
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="No problem! The search has been cancelled.",
+        text="No problem! The search has been cancelled. 👍",
     )
     return ConversationHandler.END
 
@@ -76,7 +78,7 @@ async def find_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Starts the restaurant finding conversation."""
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Right choice! Chalo miya, em thintavo cheppu? What cuisine are you looking for?",
+        text="Right choice! 👍 Chalo miya, em thintavo cheppu? What cuisine are you looking for? 😋",
     )
     return AWAITING_CUISINE
 
@@ -87,7 +89,7 @@ async def received_cuisine(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["cuisine"] = user_cuisine
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"Got it, {user_cuisine}! Now, which area are you looking in?",
+        text=f"Got it, {user_cuisine}! 👍 Now, which area are you looking in? 📍",
     )
     return AWAITING_LOCATION
 
@@ -99,12 +101,12 @@ async def received_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🥕 Pure Veg", callback_data="veg_true")],
         [InlineKeyboardButton("🍗 Non-Veg", callback_data="veg_false")],
-        [InlineKeyboardButton("Both Are Fine", callback_data="veg_none")],
+        [InlineKeyboardButton("🤖 Both Are Fine", callback_data="veg_none")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"Got it, {user_location}. Now, should I look for Pure Veg, Non-Veg, or are both okay?",
+        text=f"Got it, {user_location}. Now, should I look for Pure Veg, Non-Veg, or are both okay? 🤔",
         reply_markup=reply_markup,
     )
     return AWAITING_VEG
@@ -116,7 +118,6 @@ async def received_veg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     context.user_data["veg_preference"] = query.data
 
-    # Provide feedback on the selection
     selected_veg = "Pure Veg" if "true" in query.data else "Non-Veg" if "false" in query.data else "Both"
     await query.edit_message_text(text=f"Selected: {selected_veg}")
 
@@ -128,7 +129,7 @@ async def received_veg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Noted. And what's your budget?",
+        text="Noted. And what's your budget? 💰",
         reply_markup=reply_markup,
     )
     return AWAITING_PRICE
@@ -140,7 +141,6 @@ async def received_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     context.user_data["price"] = query.data
 
-    # Provide feedback on the selection
     await query.edit_message_text(text=f"Selected: {query.data}")
 
     keyboard = [
@@ -151,21 +151,68 @@ async def received_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="Almost done! Lastly, should the place have high ratings?",
+        text="Almost done! Lastly, should the place have high ratings? ⭐",
         reply_markup=reply_markup,
     )
     return AWAITING_RATING
 
 
 async def received_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles the rating preference and initiates the search."""
+    """Handles the rating preference and asks for confirmation."""
     query = update.callback_query
     await query.answer()
     context.user_data["rating"] = query.data
 
-    # Provide feedback on the selection
     selected_rating = "★★★★☆ & Up" if "4" in query.data else "★★★☆☆ & Up" if "3" in query.data else "Any Rating"
     await query.edit_message_text(text=f"Selected: {selected_rating}")
+
+    # --- Summarize Choices and Ask for Confirmation ---
+    cuisine = context.user_data.get("cuisine")
+    location = context.user_data.get("location")
+    veg_pref = context.user_data.get("veg_preference")
+    price = context.user_data.get("price")
+    rating = context.user_data.get("rating")
+
+    veg_text = "Pure Veg" if "true" in veg_pref else "Non-Veg" if "false" in veg_pref else "Both"
+    rating_text = "4+ Stars" if "4" in rating else "3+ Stars" if "3" in rating else "Any"
+
+    summary = (
+        f"Alright, here's what I've got: \n\n"
+        f"- Cuisine: {cuisine} \n"
+        f"- Location: {location} \n"
+        f"- Preference: {veg_text} \n"
+        f"- Budget: {price} \n"
+        f"- Rating: {rating_text} \n\n"
+        f"Should I go ahead and find restaurants for you?"
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("👍 Yes, find restaurants!", callback_data="confirm_search")],
+        [InlineKeyboardButton("👎 No, cancel search.", callback_data="cancel_search")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id, text=summary, reply_markup=reply_markup
+    )
+
+    return AWAITING_CONFIRMATION
+
+
+async def search_restaurants(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Performs the restaurant search and displays the results."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "cancel_search":
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, text="Search cancelled!"
+        )
+        return ConversationHandler.END
+
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id, action=ChatAction.TYPING
+    )
 
     # --- Gather Data and Search ---
     cuisine = context.user_data.get("cuisine")
@@ -184,11 +231,6 @@ async def received_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if rating_pref != "any":
         rating = int(rating_pref)
 
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="Got it! Let me find the best spots for you...",
-    )
-
     found_restaurants = find_restaurants(
         cuisine=cuisine,
         location=location,
@@ -201,7 +243,7 @@ async def received_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if found_restaurants:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Here are the places I found for you:",
+            text="Here are the places I found for you: 👇",
         )
         for r in found_restaurants:
             caption = (
@@ -211,7 +253,7 @@ async def received_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [
                 [
                     InlineKeyboardButton(
-                        "Get Directions",
+                        "Get Directions 🗺️",
                         url=f"https://www.google.com/maps/search/?api=1&query={r['name'].replace(' ', '+')}+{r['location']}",
                     )
                 ]
@@ -227,7 +269,7 @@ async def received_rating(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Sorry, I couldn't find any places that match all your criteria.",
+            text="Sorry, I couldn't find any places that match all your criteria. 😔",
         )
 
     return ConversationHandler.END
@@ -258,6 +300,9 @@ if __name__ == "__main__":
                 AWAITING_VEG: [CallbackQueryHandler(received_veg)],
                 AWAITING_PRICE: [CallbackQueryHandler(received_price)],
                 AWAITING_RATING: [CallbackQueryHandler(received_rating)],
+                AWAITING_CONFIRMATION: [
+                    CallbackQueryHandler(search_restaurants)
+                ],
             },
             fallbacks=[CommandHandler("cancel", cancel)],
         )
